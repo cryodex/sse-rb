@@ -16,8 +16,6 @@ Gem::Specification.new do |s|
 
   s.extensions << 'ext/sse/extconf.rb'
   
-  s.add_runtime_dependency 'siv'
-  
   s.add_development_dependency 'rspec', '~> 2.12.0'
   s.add_development_dependency 'rake'
   

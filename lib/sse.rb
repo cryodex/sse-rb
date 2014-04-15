@@ -7,10 +7,13 @@ module SSE
     
     require 'openssl'
     
+    # Parameter lengths in bytes
     CIPHER_SIZE = 16
-    M = 4
-    SALT_LEN = 8
+    M = 4; SALT_LEN = 8
     R = CIPHER_SIZE - M
+    
+    # For deterministic encryption
+    FIXED_IV = '01234567890123456789'
     
     def search_words(token, ciphs)
       
@@ -103,10 +106,13 @@ module SSE
     end
     
     def encrypt_sym(key, word)
-      
-      cipher = SIV::Cipher.new(key)
-      cipher.encrypt(word)
-      
+
+      cipher = OpenSSL::Cipher::AES.new(128, :ECB)
+      cipher.encrypt
+      cipher.key = key
+      cipher.iv = FIXED_IV
+      cipher.update(word) + cipher.final
+
     end
     
     def decrypt_words(key, words)
@@ -139,10 +145,13 @@ module SSE
     end
     
     def decrypt_sym(key, word)
-      
-      cipher = SIV::Cipher.new(key)
-      cipher.decrypt(word)
-      
+
+      cipher = OpenSSL::Cipher::AES.new(128, :ECB)
+      cipher.decrypt
+      cipher.key = key
+      cipher.iv = FIXED_IV
+      cipher.update(word) + cipher.final
+
     end
     
     def xor(a, b)

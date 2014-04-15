@@ -2,12 +2,12 @@ require 'spec_helper'
 require 'sse'
 
 describe SSE do
-
+  
   it "should provide basic functionality" do
     
-    cipher = SSE::Cipher.new('dfsfsdfadsdfs')
+    key = ["fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff"].pack("H*")
     
-    key = OpenSSL::Digest::SHA256.digest('')
+    cipher = SSE::Cipher.new(key)
     
     ciphs = cipher.encrypt_words(key, ["captain", "doctor", "captain"])
     words = cipher.decrypt_words(key, ciphs)

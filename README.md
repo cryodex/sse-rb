@@ -1,6 +1,6 @@
 ##sse-rb
 
-This gem implements symmetric searchable encryption, as described in [Song et al, 2000](http://www.cs.berkeley.edu/~dawnsong/papers/se.pdf). This scheme provides a provably secure, simple and fast algorithm for searching over encrypted data. Instead of the custom deterministic encryption scheme described in the paper, this implementation uses deterministic authenticated encryption with AES-SIV.
+This gem implements symmetric searchable encryption, as described in [Song et al, 2000](http://www.cs.berkeley.edu/~dawnsong/papers/se.pdf). This scheme provides a provably secure, simple and fast algorithm for searching over encrypted data.
 
 ###Usage
 
