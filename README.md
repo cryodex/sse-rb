@@ -1,6 +1,6 @@
 ##sse-rb
 
-This gem implements symmetric searchable encryption, as described in [Song et al, 2000](http://www.cs.berkeley.edu/~dawnsong/papers/se.pdf). This scheme provides a provably secure, simple and fast algorithm for searching over encrypted data.
+This gem implements symmetric searchable encryption, as described in [Song et al, 2000](http://www.cs.berkeley.edu/~dawnsong/papers/se.pdf). This scheme provides a secure, simple and fast algorithm for searching over encrypted data. It achieves searchable encryption by crafting, for each word, a special two-layered encryption construct. Given a trapdoor, the server can strip the outer layer and assert whether the inner layer matches a search query. The algorithm performs searches in `O(n)` time.
 
 ###Usage
 
@@ -22,7 +22,6 @@ puts cipher.search_words(token, ciphs)         # => [0,2]
 
 token = cipher.generate_token(key, "driver")
 puts cipher.search_exists(token, ciphs)        # => false
-
 ```
 
 ###Credits
