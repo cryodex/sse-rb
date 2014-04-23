@@ -1,12 +1,26 @@
+class String
+  def |( other )
+    b1 = self.unpack("c*")
+    b2 = other.unpack("c*")
+    b1.zip(b2).map{ |a,b| a | b }.pack("c*")
+  end
+  def ^( other )
+    b1 = self.unpack("c*")
+    b2 = other.unpack("c*")
+    b1.zip(b2).map{ |a,b| a ^ b }.pack("c*")
+  end
+end
+
 module SSE
   
   class Client
   
     require 'openssl'
+    require 'cmac'
     
     def initialize(server, master_key)
       @server = server
-      @cipher = Cipher.new(master_key)
+      @cipher = CMAC::Digest.new(master_key)
     end
     
     def setup(texts)
@@ -14,7 +28,7 @@ module SSE
       params = bloom_parameters
       
       indexes = texts.each_with_index.map do |text, id|
-        document = Document.new(text, id)
+        document = Document.new(text, id.to_s)
         index = Index.new(document, @cipher, params)
       end
       
@@ -26,12 +40,11 @@ module SSE
     
       @server.update(operation, index)
       
-      
     end
   
     def search(word)
       
-      trapdoor = @cipher.compute_trapdoor(word)
+      trapdoor = @cipher.update(word)
       @server.search(trapdoor)
       
     end
@@ -64,18 +77,21 @@ module SSE
     end
     
     def tokenize
-      @text.split(' ')
+      @text.downcase.gsub(/[^0-9a-z ]/i, '').split(' ').uniq
     end
     
   end
   
   class Index
     
+    attr_accessor :index, :id
+    
     require 'bloom-filter'
     
     def initialize(document, cipher, params)
       
       @document = document
+      @id = document.id
       @cipher = cipher
       
       @index = create_index(params)
@@ -92,12 +108,6 @@ module SSE
     
     private
     
-    def create_cipher(key)
-      
-      Cipher.new(key)
-      
-    end
-    
     def create_index(params)
       
       BloomFilter.new(params)
@@ -107,14 +117,13 @@ module SSE
     def build_index!
       
       words = @document.tokenize
-      doc_id = @document.id.to_s
+      doc_id = @document.id
       
       # Step 1: compute trapdoor, codeword and insert in BF.
       words.each_with_index do |word|
-        trap_door = @cipher.compute_trapdoor(word)
-        puts "trap door for #{word}: " + trap_door
-        code_word = @cipher.compute_code_word(doc_id, trap_door)
-        puts "code word for #{doc_id}, #{word}: " + code_word
+        trap_door = @cipher.update(word)
+        cipher = CMAC::Digest.new(trap_door)
+        code_word = cipher.update(doc_id)
         @index.insert(code_word)
       end
       
@@ -130,38 +139,17 @@ module SSE
     
   end
 
-  class Cipher
-    
-    def initialize(k_priv = nil, size = 256)
-      
-      @master_key = k_priv
-      puts @master_key.inspect
-      
-      size = k_priv ? @master_key.bytesize * 8 : size
-      @digest =  OpenSSL::Digest.new("sha#{@size}")
-      
-    end
-    
-    def create_prf(prf_key)
-      OpenSSL::HMAC.new(prf_key, @digest)
-    end
-    
-    def compute_trapdoor(word)
-      create_prf(@master_key).update(word).to_s
-    end
-    
-    def compute_code_word(doc_id, trap_door)
-      create_prf(trap_door).update(doc_id.to_s).to_s
-    end
-    
-  end
-  
   class Server
-  
+    
     def setup(indexes)
+      
       @indexes = indexes
+      
+      @tree = []
+     #  index_binary(@indexes.map(&:index))
+      
     end
-  
+    
     def update(operation)
       
       if operation == :post
@@ -175,33 +163,151 @@ module SSE
       end
     
     end
-  
-    def search(trapdoor)
+    
+    def search(trap_door)
       
       results = []
-      cipher = Cipher.new
       
-      @indexes.each_with_index do |index, id|
-        code_word = cipher.compute_code_word(id, trapdoor)
-        puts "Code word for doc id #{id}: #{code_word}"
-        results.push(id) if index.search(code_word)
+      # i = @indexes.size - 1
+      
+      cipher = CMAC::Digest.new(trap_door)
+      code_words = []
+      
+      @indexes.each_with_index do |index, i|
+        
+        code_word = cipher.update(index.id)
+        
+        code_words << code_word
+        
+        if index.index.include?(code_word)
+          results << i
+        end
+        
       end
+      
+     #  search_binary(code_words)
       
       results
       
     end
-  
+    
+    # Binary tree
+    def index_binary(indexes)
+      
+      if indexes.size <= 2
+        @tree << indexes
+        return
+      end
+      
+      results = []
+      
+      n = 8
+      
+      indexes.each_slice(n) do |tuple|
+        
+        next if tuple.any?(&:nil?)
+        
+        print '*'
+        
+        filter = BloomFilter.new({ size: 100_000, error_rate: 0.01 })
+        
+        binary = tuple.first.binary
+        
+        tuple.each_with_index do |value, index|
+          
+          if index == 0
+            binary = value.binary
+          else
+            binary = binary | value.binary
+          end
+        end
+        
+        filter.binary = binary
+        
+        results << filter
+        
+      end
+      
+      if indexes.size % n != 0
+        results << indexes[-1]
+      end
+      
+      @tree << results
+      
+      index_binary(results)
+      
+    end
+
+    def search_binary(code_words)
+      
+      results = []
+      
+      i = @tree.size - 1
+
+      while i >= 0
+
+        filters = @tree[i]
+
+        filters.each_with_index do |filter, j|
+          code_words.each do |code_word|
+            break if !filter.include?(code_word)
+            results << [i, j]
+          end
+        end
+
+        i -= 1
+
+      end
+      
+      results
+    
+    end
+    
   end
   
 end
 
+require 'benchmark'
+require 'lorem_ipsum_amet'
+require 'ruby-prof'
 
 server = SSE::Server.new
 
-master_key = OpenSSL::Digest::SHA256.hexdigest('')
+master_key = OpenSSL::Digest::SHA256.hexdigest('').byteslice(0, 16)
 client = SSE::Client.new(server, master_key)
 
-texts = ['hello world hey!', 'howdy hello howda yadelidoo!', 'xxx']
-client.setup(texts)
+texts = []
 
-puts client.search('hello').size
+# Avg 60 ms/add
+10000.times do
+  text = LoremIpsum.lorem_ipsum(words: 1000)
+  texts << text
+end
+
+puts "Done."
+
+Benchmark.bm do |x|
+
+  x.report do
+    client.setup(texts)
+  end
+  
+end
+
+Benchmark.bm do |x|
+
+  # Avg 25 ms/search (10 000 docs, 1000 words/doc, 100 000 bits/filter)
+  # Avg 260 ms/search (100 000 docs, 1000 words/doc)
+  x.report do
+    # RubyProf.start
+    i = 100
+    while i > 0
+      client.search('Lorem')
+      i -= 1
+    end
+    # result = RubyProf.stop
+    # printer = RubyProf::FlatPrinter.new(result)
+    # printer.print(STDOUT)
+  end
+  
+end
